@@ -29,7 +29,6 @@ namespace StorageApi
 
             app.UseAuthorization();
 
-
             app.MapControllers();
 
             app.Run();
