@@ -13,19 +13,40 @@ public class ProductsController : ControllerBase
         _context = context;
     }
 
-    // GET: api/Product
+
+    // GET: api/products
+    // GET: api/products?category=categoriName
+    // GET: api/products?name=productname
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<ProductDto>>> GetProduct()
+    public async Task<ActionResult<IEnumerable<ProductDto>>> GetProducts([FromQuery] string? category,[FromQuery] string? name, CancellationToken cancellationToken)
     {
-        var products = await _context.Product
+        IQueryable<Product> query = _context.Product.AsNoTracking();
+
+        if (!string.IsNullOrWhiteSpace(category))
+        {
+            string trimmedCategory = category.Trim();
+
+            query = query.Where(product => product.Category == trimmedCategory);
+        }
+
+        if (!string.IsNullOrWhiteSpace(name))
+        {
+            string trimmedName = name.Trim();
+
+            query = query.Where(product => product.Name.Contains(trimmedName));
+        }
+
+
+
+        List<ProductDto> products = await query
             .Select(product => new ProductDto
             {
                 Id = product.Id,
                 Name = product.Name,
                 Price = product.Price,
-                Count = product.Count
+                Count = product.Count,
             })
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
 
         return Ok(products);
     }
@@ -156,4 +177,6 @@ public class ProductsController : ControllerBase
 
         return Ok(stats);
     }
+
+   
 }
