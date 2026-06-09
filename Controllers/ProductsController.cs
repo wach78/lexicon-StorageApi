@@ -130,8 +130,30 @@ public class ProductsController : ControllerBase
         return NoContent();
     }
 
-    private bool ProductExists(int? id)
+    // GET: api/products/stats
+    [HttpGet("stats")]
+    public async Task<ActionResult<ProductStatsDto>> GetStats(CancellationToken cancellationToken)
     {
-        return _context.Product.Any(e => e.Id == id);
+        ProductStatsDto? stats = await _context.Product
+            .GroupBy(product => 1)
+            .Select(group => new ProductStatsDto
+            {
+                TotalProducts = group.Count(),
+                TotalInventoryValue = group.Sum(product => product.Price * product.Count),
+                AveragePrice = (Decimal)group.Average(product => product.Price)
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (stats is null)
+        {
+            return Ok(new ProductStatsDto
+            {
+                TotalProducts = 0,
+                TotalInventoryValue = 0m,
+                AveragePrice = 0m
+            });
+        }
+
+        return Ok(stats);
     }
 }
