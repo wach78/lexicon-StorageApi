@@ -13,28 +13,48 @@ public class ProductsController : ControllerBase
         _context = context;
     }
 
-    // GET: api/Product
+    // GET: api/products
+    // GET: api/products?category=categoriName
+    // GET: api/products?name=productname
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<ProductDto>>> GetProduct()
+    public async Task<ActionResult<IEnumerable<ProductDto>>> GetProducts([FromQuery] string? category, [FromQuery] string? name, CancellationToken cancellationToken)
     {
-        var products = await _context.Product
+        IQueryable<Product> query = _context.Product.AsNoTracking();
+
+        if (!string.IsNullOrWhiteSpace(category))
+        {
+            string trimmedCategory = category.Trim();
+
+            query = query.Where(product => product.Category == trimmedCategory);
+        }
+
+        if (!string.IsNullOrWhiteSpace(name))
+        {
+            string trimmedName = name.Trim();
+
+            query = query.Where(product => product.Name.Contains(trimmedName));
+        }
+
+        List<ProductDto> products = await query
             .Select(product => new ProductDto
             {
                 Id = product.Id,
                 Name = product.Name,
                 Price = product.Price,
-                Count = product.Count
+                Count = product.Count,
             })
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
 
         return Ok(products);
     }
 
     // GET: api/Product/5
     [HttpGet("{id:int}")]
-    public async Task<ActionResult<Product>> GetProduct([FromRoute] int id)
+    public async Task<ActionResult<ProductDto>> GetProduct([FromRoute] int id, CancellationToken cancellationToken)
     {
-        var product = await _context.Product.FindAsync(id);
+        Product? product = await _context.Product
+            .AsNoTracking()
+            .SingleOrDefaultAsync(product => product.Id == id, cancellationToken);
 
         if (product is null)
         {
@@ -55,14 +75,14 @@ public class ProductsController : ControllerBase
     // PUT: api/Product/5
     // To protect from overposting attacks, see https://go.microsoft.com/fwlink/?linkid=2123754
     [HttpPut("{id:int}")]
-    public async Task<IActionResult> PutProduct([FromRoute] int id, [FromBody] UpdateProductDto updateProductDto)
+    public async Task<IActionResult> PutProduct([FromRoute] int id, [FromBody] UpdateProductDto updateProductDto, CancellationToken cancellationToken)
     {
         if (id != updateProductDto.Id)
         {
             return BadRequest("The id in the URL must match the id in the request body.");
         }
 
-        var product = await _context.Product.FindAsync(id);
+        Product? product = await _context.Product.SingleOrDefaultAsync(product => product.Id == id, cancellationToken);
 
         if (product is null)
         {
@@ -76,7 +96,7 @@ public class ProductsController : ControllerBase
         product.Count = updateProductDto.Count;
         product.Description = updateProductDto.Description?.Trim() ?? string.Empty;
 
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync(cancellationToken);
 
         return NoContent();
     }
@@ -84,7 +104,7 @@ public class ProductsController : ControllerBase
     // POST: api/Products
     // To protect from overposting attacks, see https://go.microsoft.com/fwlink/?linkid=2123754
     [HttpPost]
-    public async Task<ActionResult<ProductDto>> PostProduct([FromBody] CreateProductDto createProductDto)
+    public async Task<ActionResult<ProductDto>> PostProduct([FromBody] CreateProductDto createProductDto, CancellationToken cancellationToken)
     {
         var product = new Product
         {
@@ -97,7 +117,7 @@ public class ProductsController : ControllerBase
         };
 
         _context.Product.Add(product);
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync(cancellationToken);
 
         var productDto = new ProductDto
         {
@@ -116,22 +136,47 @@ public class ProductsController : ControllerBase
 
     // DELETE: api/Products/5
     [HttpDelete("{id:int}")]
-    public async Task<IActionResult> DeleteProduct([FromRoute] int? id)
+    public async Task<IActionResult> DeleteProduct([FromRoute] int id, CancellationToken cancellationToken)
     {
-        var product = await _context.Product.FindAsync(id);
+        Product? product = await _context.Product.SingleOrDefaultAsync(product => product.Id == id, cancellationToken);
+
         if (product == null)
         {
             return NotFound();
         }
 
         _context.Product.Remove(product);
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync(cancellationToken);
 
         return NoContent();
     }
 
-    private bool ProductExists(int? id)
+    // GET: api/products/stats
+    [HttpGet("stats")]
+    public async Task<ActionResult<ProductStatsDto>> GetStats(CancellationToken cancellationToken)
     {
-        return _context.Product.Any(e => e.Id == id);
+        ProductStatsDto? stats = await _context.Product
+            .GroupBy(product => 1)
+            .Select(group => new ProductStatsDto
+            {
+                TotalProducts = group.Count(),
+                TotalInventoryValue = group.Sum(product => product.Price * product.Count),
+                AveragePrice = (Decimal)group.Average(product => product.Price)
+            })
+            .AsNoTracking()
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (stats is null)
+        {
+            return Ok(new ProductStatsDto
+            {
+                TotalProducts = 0,
+                TotalInventoryValue = 0m,
+                AveragePrice = 0m
+            });
+        }
+
+        return Ok(stats);
     }
+
 }
